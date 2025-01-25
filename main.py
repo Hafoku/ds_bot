@@ -7,7 +7,7 @@ import random
 import google.generativeai as genai
 
 # Настройка API Gemini
-genai.configure(api_key="")
+genai.configure(api_key="AIzaSyByUoAgQBqeuf-iVpJFvHTXRI2CWaprct4")
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 # Настройка логирования в папку logs
@@ -104,30 +104,74 @@ async def on_interaction(interaction: discord.Interaction):
 
         except Exception as e:
             logging.error(f"Ошибка логирования команды: {e}")
-
 @bot.tree.command(name="запрос", description="Отправить запрос в Gemini API")
 async def запрос(interaction: discord.Interaction, запрос: str):
     try:
-        guild_name = interaction.guild.name if interaction.guild else "DMs"
-        response = model.generate_content(запрос)
-        result = response.text
+        # Подтверждаем интеракцию
+        await interaction.response.defer()
 
-        content = f"[{interaction.created_at}] {interaction.user} отправил запрос: {запрос}. Ответ: {result}"
-        save_log(f"logs/{guild_name}", "requests.log", content)
+        # Получение имени сервера или указание на ЛС
+        guild_name = interaction.guild.name if interaction.guild else "DMs"
+
+        # Отправка запроса в API Gemini
+        try:
+            response = model.generate_content(запрос)  # Генерация контента на основе запроса
+            result = response.text if hasattr(response, 'text') else None
+        except Exception as api_error:
+            logging.error(f"Ошибка API Gemini: {api_error}")
+            await interaction.followup.send(f"Ошибка API: {api_error}")
+            return
+
+        if not result:
+            logging.warning("Пустой ответ от API Gemini.")
+            await interaction.followup.send("API вернул пустой ответ. Попробуйте снова.")
+            return
+
+        # Директория для сохранения логов ответов
+        response_dir = f"logs/{guild_name}/responses"
+        ensure_dir_exists(response_dir)  # Убедиться, что директория существует
 
         if len(result) > 2000:
-            filename = f"response_{interaction.id}.txt"
-            with open(os.path.join("logs", filename), "w", encoding="utf-8") as file:
-                file.write(result)
-            await interaction.response.send_message(
-                f"Результат слишком длинный. Полный ответ сохранён в файле: `{filename}`."
-            )
+            # Если длина ответа превышает 2000 символов, сохраняем его в файл
+            try:
+                existing_files = os.listdir(response_dir)
+                count = sum(1 for file in existing_files if file.startswith("ответ")) + 1
+                filename = f"ответ{count}.txt"  # Уникальное имя файла
+                file_path = os.path.join(response_dir, filename)
+
+                # Запись ответа в файл
+                with open(file_path, "w", encoding="utf-8") as file:
+                    file.write(result)
+
+                # Отправка файла в ответ пользователю
+                with open(file_path, "rb") as file:
+                    await interaction.followup.send(
+                        "Результат слишком длинный. Полный ответ сохранён в файле:",
+                        file=discord.File(file, filename=filename)
+                    )
+
+                # Логирование успешного сохранения
+                logging.info(f"Ответ сохранён в файл: {file_path}")
+            except Exception as file_error:
+                logging.error(f"Ошибка записи файла: {file_error}")
+                await interaction.followup.send(f"Ошибка сохранения файла: {file_error}")
+                return
         else:
-            await interaction.response.send_message(f"Результат запроса: {result}")
+            # Если длина ответа менее 2000 символов, отправляем его как текст
+            await interaction.followup.send(f"Результат запроса: {result}")
+
+        # Логирование успешного запроса
+        content = (
+            f"[{interaction.created_at}] {interaction.user} отправил запрос: {запрос}. "
+            f"Ответ сохранён в: {filename if len(result) > 2000 else 'сообщении.'}"
+        )
+        save_log(f"logs/{guild_name}", "requests.log", content)
+
     except Exception as e:
+        # Обработка ошибок
         logging.error(f"Ошибка при запросе: {e}")
         if not interaction.response.is_done():
-            await interaction.response.send_message(f"Ошибка: {e}")
+            await interaction.followup.send(f"Ошибка: {e}")
 
 @bot.tree.command(name="гемблинг", description="Попробуй удачу! Рискни!")
 async def гемблинг(interaction: discord.Interaction):
@@ -161,5 +205,5 @@ async def гемблинг(interaction: discord.Interaction):
         if not interaction.response.is_done():
             await interaction.response.send_message(f"Произошла ошибка: {e}")
 
-TOKEN = ""
+TOKEN = "MTMzMjA1NjE1NjcyMTM4MTQ1OQ.Gz-r5L.-gq4V9AoD-UfJ_eZQo244fV260wcAog7WGjbC0"
 bot.run(TOKEN)
