@@ -5,10 +5,16 @@ import logging
 import os
 import random
 import google.generativeai as genai
+import requests  # Добавляем импорт для работы с HTTP-запросами
 
 # Настройка API Gemini
 genai.configure(api_key="AIzaSyByUoAgQBqeuf-iVpJFvHTXRI2CWaprct4")
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+
+# Настройка OpenRouter
+OPENROUTER_API_KEY = "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"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEEPSEEK_MODEL = "deepseek-ai/deepseek-r1"  # Идентификатор модели DeepSeek
 
 # Настройка логирования в папку logs
 log_dir = "logs"
@@ -104,8 +110,8 @@ async def on_interaction(interaction: discord.Interaction):
 
         except Exception as e:
             logging.error(f"Ошибка логирования команды: {e}")
-@bot.tree.command(name="запрос", description="Отправить запрос в Gemini API")
-async def запрос(interaction: discord.Interaction, запрос: str):
+@bot.tree.command(name="гемини", description="Отправить запрос гемини")
+async def гемини(interaction: discord.Interaction, гемини: str):
     try:
         # Подтверждаем интеракцию
         await interaction.response.defer()
@@ -115,7 +121,7 @@ async def запрос(interaction: discord.Interaction, запрос: str):
 
         # Отправка запроса в API Gemini
         try:
-            response = model.generate_content(запрос)  # Генерация контента на основе запроса
+            response = model.generate_content(гемини)  # Генерация контента на основе запроса
             result = response.text if hasattr(response, 'text') else None
         except Exception as api_error:
             logging.error(f"Ошибка API Gemini: {api_error}")
@@ -162,7 +168,7 @@ async def запрос(interaction: discord.Interaction, запрос: str):
 
         # Логирование успешного запроса
         content = (
-            f"[{interaction.created_at}] {interaction.user} отправил запрос: {запрос}. "
+            f"[{interaction.created_at}] {interaction.user} отправил запрос: {гемини}. "
             f"Ответ сохранён в: {filename if len(result) > 2000 else 'сообщении.'}"
         )
         save_log(f"logs/{guild_name}", "requests.log", content)
@@ -204,6 +210,81 @@ async def гемблинг(interaction: discord.Interaction):
         logging.error(f"Ошибка в команде гемблинг: {e}")
         if not interaction.response.is_done():
             await interaction.response.send_message(f"Произошла ошибка: {e}")
+
+
+@bot.tree.command(name="дипсик", description="Отправить запрос к DeepSeek R1")
+async def дипсик(interaction: discord.Interaction, запрос: str):  # Измените название функции
+    try:
+        await interaction.response.defer()
+        guild_name = interaction.guild.name if interaction.guild else "DMs"
+
+        # Формируем запрос к OpenRouter API
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "model": DEEPSEEK_MODEL,
+            "messages": [{"role": "user", "content": запрос}],
+            "temperature": 0.7,
+            "max_tokens": 1000
+        }
+
+        try:
+            response = requests.post(OPENROUTER_API_URL, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()['choices'][0]['message']['content']
+        except Exception as api_error:
+            logging.error(f"Ошибка OpenRouter API: {api_error}")
+            await interaction.followup.send(f"Ошибка API: {api_error}")
+            return
+
+        # Обработка и отправка результата (аналогично команде гемини)
+        response_dir = f"logs/{guild_name}/responses"
+        ensure_dir_exists(response_dir)
+
+        if len(result) > 2000:
+            try:
+                existing_files = os.listdir(response_dir)
+                count = sum(1 for file in existing_files if file.startswith("deepseek_response")) + 1
+                filename = f"deepseek_response{count}.txt"
+                file_path = os.path.join(response_dir, filename)
+
+                with open(file_path, "w", encoding="utf-8") as file:
+                    file.write(result)
+
+                with open(file_path, "rb") as file:
+                    await interaction.followup.send(
+                        "Результат слишком длинный. Полный ответ сохранён в файле:",
+                        file=discord.File(file, filename=filename)
+                    )
+
+                logging.info(f"Ответ DeepSeek сохранён в файл: {file_path}")
+            except Exception as file_error:
+                logging.error(f"Ошибка записи файла: {file_error}")
+                await interaction.followup.send(f"Ошибка сохранения файла: {file_error}")
+                return
+        else:
+            await interaction.followup.send(f"Результат запроса: {result}")
+
+        # Логирование
+        content = (
+            f"[{interaction.created_at}] {interaction.user} отправил DeepSeek запрос: {запрос}. "
+            f"Ответ сохранён в: {filename if len(result) > 2000 else 'сообщении.'}"
+        )
+        save_log(f"logs/{guild_name}", "deepseek_requests.log", content)
+
+    except Exception as e:
+        logging.error(f"Ошибка при запросе к DeepSeek: {e}")
+        if not interaction.response.is_done():
+            await interaction.followup.send(f"Ошибка: {e}")
+
+@bot.command(name="sync")
+@commands.has_permissions(administrator=True)
+async def sync(ctx):
+    await bot.tree.sync()
+    await ctx.send("Команды синхронизированы!")
 
 TOKEN = "MTMzMjA1NjE1NjcyMTM4MTQ1OQ.Gz-r5L.-gq4V9AoD-UfJ_eZQo244fV260wcAog7WGjbC0"
 bot.run(TOKEN)
