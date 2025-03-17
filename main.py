@@ -8,13 +8,8 @@ import google.generativeai as genai
 import requests  # Добавляем импорт для работы с HTTP-запросами
 
 # Настройка API Gemini
-genai.configure(api_key="AIzaSyByUoAgQBqeuf-iVpJFvHTXRI2CWaprct4")
+genai.configure(api_key="")
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-
-# Настройка OpenRouter
-OPENROUTER_API_KEY = "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"
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEEPSEEK_MODEL = "deepseek-ai/deepseek-r1"  # Идентификатор модели DeepSeek
 
 # Настройка логирования в папку logs
 log_dir = "logs"
@@ -286,5 +281,5 @@ async def sync(ctx):
     await bot.tree.sync()
     await ctx.send("Команды синхронизированы!")
 
-TOKEN = "MTMzMjA1NjE1NjcyMTM4MTQ1OQ.Gz-r5L.-gq4V9AoD-UfJ_eZQo244fV260wcAog7WGjbC0"
+TOKEN = ""
 bot.run(TOKEN)
